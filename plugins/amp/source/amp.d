@@ -1,9 +1,6 @@
 module amp;
 
-import lv2.bind.core;
 import lv2.core;
-
-import std.math : pow;
 
 enum ampUri = "https://github.com/rtbo/lv2-d/plugins/eg-amp";
 
@@ -15,6 +12,7 @@ enum : uint {
 
 float dbToGain(in float db) pure @nogc nothrow @safe
 {
+    import std.math : pow;
     return db > -90f ? pow(10f, db*0.05f) : 0f;
 }
 
@@ -60,23 +58,4 @@ final class Amp : Plugin
 
 static assert(isPlugin!Amp);
 
-immutable LV2_Descriptor DESCRIPTOR = {
-    uri:            ampUri,
-    instantiate:    &instantiate!Amp,
-    connectPort:    &connectPort!Amp,
-    activate:       &activate!Amp,
-    run:            &run!Amp,
-    deactivate:     &deactivate!Amp,
-    cleanup:        &cleanup!Amp,
-    extensionData:  &extensionData!Amp,
-};
-
-extern(C)
-const (LV2_Descriptor)* lv2_descriptor(uint index) {
-    if (index == 0) {
-        return &DESCRIPTOR;
-    }
-    else {
-        return null;
-    }
-}
+mixin lv2_descriptor!(ampUri, Amp);

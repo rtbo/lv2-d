@@ -2,34 +2,6 @@ module lv2.core;
 
 import lv2.bind.core;
 
-abstract class Plugin
-{
-    void cleanup() {}
-    void activate() {}
-    void deactivate() {}
-
-    @nogc nothrow
-    abstract void connectPort(uint port, void *dataLocation);
-
-    @nogc nothrow
-    abstract void run(size_t sampleCount);
-}
-
-//! Statically checks that Plug is a LV2 plugin type
-enum bool isPlugin(Plug) =
-    is(Plug : Plugin) &&
-    is(typeof((string uri, double sampleRate, string bundlePath) {
-        Plug p = Plug.instantiate(uri, sampleRate, bundlePath);
-    }));
-
-
-enum bool hasExtensionData(Plug) =
-    isPlugin!Plug &&
-    is(typeof((string uri) {
-        void *ed = Plug.extensiondata(uri);
-    }));
-
-
 enum LV2_CORE_URI = "http://lv2plug.in/ns/lv2core";
 
 enum LV2_CORE__AllpassPlugin      = "http://lv2plug.in/ns/lv2core#AllpassPlugin";
@@ -116,6 +88,89 @@ enum LV2_CORE__sampleRate         = "http://lv2plug.in/ns/lv2core#sampleRate";
 enum LV2_CORE__scalePoint         = "http://lv2plug.in/ns/lv2core#scalePoint";
 enum LV2_CORE__symbol             = "http://lv2plug.in/ns/lv2core#symbol";
 enum LV2_CORE__toggled            = "http://lv2plug.in/ns/lv2core#toggled";
+
+
+abstract class Plugin
+{
+    void cleanup() {}
+    void activate() {}
+    void deactivate() {}
+
+    @nogc nothrow
+    abstract void connectPort(uint port, void *dataLocation);
+
+    @nogc nothrow
+    abstract void run(size_t sampleCount);
+}
+
+//! Statically checks that Plug is a LV2 plugin type
+enum bool isPlugin(Plug) =
+    is(Plug : Plugin) &&
+    is(typeof((string uri, double sampleRate, string bundlePath) {
+        Plug p = Plug.instantiate(uri, sampleRate, bundlePath);
+    }));
+
+
+enum bool hasExtensionData(Plug) =
+    isPlugin!Plug &&
+    is(typeof((string uri) {
+        void *ed = Plug.extensiondata(uri);
+    }));
+
+
+
+mixin template lv2_descriptor(Specs...)
+{
+    import lv2.bind.core;
+
+    extern(C) pragma(mangle, "lv2_descriptor")
+    const(LV2_Descriptor)* lv2_descriptor(uint index) nothrow @nogc
+    {
+        import std.meta : AliasSeq;
+
+        template DescSpec(string s, T) {
+            alias uri = s;
+            alias Plug = T;
+        }
+
+        template parseDescSpecs(Specs...)
+        {
+            static if (Specs.length == 0) {
+                alias parseDescSpecs = AliasSeq!();
+            }
+            else {
+                alias parseDescSpecs = AliasSeq!(
+                    DescSpec!(Specs[0..2]),
+                    parseDescSpecs!(Specs[2..$])
+                );
+            }
+        }
+
+        alias descSpecs = parseDescSpecs!Specs;
+
+        foreach(size_t i, desc; descSpecs) {
+            if (index == i) {
+                alias uri = desc.uri;
+                alias Plug = desc.Plug;
+                static immutable LV2_Descriptor d = {
+                    uri:            uri,
+                    instantiate:    &instantiate  !Plug,
+                    connectPort:    &connectPort  !Plug,
+                    activate:       &activate     !Plug,
+                    run:            &run          !Plug,
+                    deactivate:     &deactivate   !Plug,
+                    cleanup:        &cleanup      !Plug,
+                    extensionData:  &extensionData!Plug,
+                };
+                return &d;
+            }
+        }
+
+        return null;
+    }
+
+
+}
 
 
 extern (C) nothrow
