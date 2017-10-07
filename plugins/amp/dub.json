@@ -1,0 +1,16 @@
+{
+	"name": "amp",
+	"targetType": "dynamicLibrary",
+	"targetName": "amp",
+	"authors": [
+		"Rémi Thebault"
+	],
+	"description": "example Amp LV2 plugin",
+	"copyright": "Copyright © 2017, Rémi Thebault",
+	"license": "MIT",
+	"dependencies": {
+		"lv2": {
+			"path": "../.."
+		}
+	}
+}
