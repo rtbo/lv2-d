@@ -2,6 +2,9 @@ module lv2.core;
 
 import lv2.bind.core;
 
+import std.meta : staticIndexOf;
+import std.traits : FieldNameTuple, Fields;
+
 enum LV2_CORE_URI = "http://lv2plug.in/ns/lv2core";
 
 enum LV2_CORE__AllpassPlugin      = "http://lv2plug.in/ns/lv2core#AllpassPlugin";
@@ -106,11 +109,15 @@ abstract class PluginBase
 abstract class Plugin(P) : PluginBase
 {
     alias Ports = P;
+    alias PortNames = FieldNameTuple!Ports;
+
+    /// check at compile-time that name is a port
+    enum bool hasPort(string name) = staticIndexOf!(name, PortNames) != -1;
+
 
     final override void connectPort(uint port, void *dataLocation)
     {
-        import std.traits : Fields, FieldNameTuple;
-        foreach (size_t i, field; FieldNameTuple!Ports) {
+        foreach (size_t i, field; PortNames) {
             if (port == i) {
                 mixin("_ports." ~ field ~ ".loc = cast(Fields!Ports[i].Loc)dataLocation;");
             }
@@ -120,10 +127,23 @@ abstract class Plugin(P) : PluginBase
     nothrow @nogc
     @property auto opDispatch(string name)()
     {
-        import std.traits : FieldNameTuple;
-        foreach (field; FieldNameTuple!Ports) {
+        static assert (hasPort!name, name~" is not a field of "~Ports.stringof);
+
+        foreach (field; PortNames) {
             static if (name == field) {
                 return mixin("_ports."~field~".data(_sampleCount)");
+            }
+        }
+    }
+
+    nothrow @nogc
+    @property auto opDispatch(string name, T)(in T data)
+    {
+        static assert (hasPort!name, name~" is not a field of "~Ports.stringof);
+
+        foreach (field; PortNames) {
+            static if (name == field) {
+                mixin("_ports."~field~".setData(data);");
             }
         }
     }
@@ -131,6 +151,7 @@ abstract class Plugin(P) : PluginBase
     private Ports _ports;
     private size_t _sampleCount;
 }
+
 
 //! Statically checks that Plug is a LV2 plugin type
 enum bool isPlugin(Plug) =
@@ -167,13 +188,17 @@ struct InputControl
 struct OutputControl
 {
     alias Loc = float*;
-    alias Data = ref float;
+    alias Data = float;
     enum direction = PortDir.output;
 
     Loc loc;
     Data data(in size_t) @nogc nothrow
     {
         return *loc;
+    }
+    void setData(in Data data) @nogc nothrow
+    {
+        *loc = data;
     }
 }
 
@@ -202,6 +227,7 @@ struct OutputAudio
         return loc[0 .. sampleCount];
     }
 }
+
 
 mixin template lv2_descriptor(Specs...)
 {
@@ -252,10 +278,10 @@ mixin template lv2_descriptor(Specs...)
 
         return null;
     }
-
-
 }
 
+
+// Instantiation class
 
 extern (C) nothrow
 LV2_Handle instantiate(Plug) (const LV2_Descriptor *descriptor,
@@ -332,7 +358,7 @@ void deactivate(Plug)(LV2_Handle instance)
 }
 
 
-
+// Audio class
 
 extern(C) nothrow @nogc
 void connectPort(Plug)(LV2_Handle instance,
@@ -356,6 +382,9 @@ void run(Plug)(LV2_Handle instance, uint sampleCount)
     //}
     plug.run(sampleCount);
 }
+
+
+// Discovery class
 
 extern (C) nothrow
 const(void)* extensionData(Plug)(const(char)* uri)
