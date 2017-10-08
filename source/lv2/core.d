@@ -90,22 +90,51 @@ enum LV2_CORE__symbol             = "http://lv2plug.in/ns/lv2core#symbol";
 enum LV2_CORE__toggled            = "http://lv2plug.in/ns/lv2core#toggled";
 
 
-abstract class Plugin
+abstract class PluginBase
 {
     void cleanup() {}
     void activate() {}
     void deactivate() {}
 
-    @nogc nothrow
+    nothrow @nogc
     abstract void connectPort(uint port, void *dataLocation);
 
-    @nogc nothrow
+    nothrow @nogc
     abstract void run(size_t sampleCount);
+}
+
+abstract class Plugin(P) : PluginBase
+{
+    alias Ports = P;
+
+    final override void connectPort(uint port, void *dataLocation)
+    {
+        import std.traits : Fields, FieldNameTuple;
+        foreach (size_t i, field; FieldNameTuple!Ports) {
+            if (port == i) {
+                mixin("_ports." ~ field ~ ".loc = cast(Fields!Ports[i].Loc)dataLocation;");
+            }
+        }
+    }
+
+    nothrow @nogc
+    @property auto opDispatch(string name)()
+    {
+        import std.traits : FieldNameTuple;
+        foreach (field; FieldNameTuple!Ports) {
+            static if (name == field) {
+                return mixin("_ports."~field~".data(_sampleCount)");
+            }
+        }
+    }
+
+    private Ports _ports;
+    private size_t _sampleCount;
 }
 
 //! Statically checks that Plug is a LV2 plugin type
 enum bool isPlugin(Plug) =
-    is(Plug : Plugin) &&
+    is(Plug : PluginBase) &&
     is(typeof((string uri, double sampleRate, string bundlePath) {
         Plug p = Plug.instantiate(uri, sampleRate, bundlePath);
     }));
@@ -118,6 +147,61 @@ enum bool hasExtensionData(Plug) =
     }));
 
 
+enum PortDir {
+    input, output
+}
+
+struct InputControl
+{
+    alias Loc = const(float)*;
+    alias Data = float;
+    enum direction = PortDir.input;
+
+    Loc loc;
+    Data data(in size_t) @nogc nothrow
+    {
+        return *loc;
+    }
+}
+
+struct OutputControl
+{
+    alias Loc = float*;
+    alias Data = ref float;
+    enum direction = PortDir.output;
+
+    Loc loc;
+    Data data(in size_t) @nogc nothrow
+    {
+        return *loc;
+    }
+}
+
+struct InputAudio
+{
+    alias Loc = const(float)*;
+    alias Data = const(float)[];
+    enum direction = PortDir.input;
+
+    Loc loc;
+    Data data(in size_t sampleCount) @nogc nothrow
+    {
+        return loc[0 .. sampleCount];
+    }
+}
+
+struct OutputAudio
+{
+    alias Loc = float*;
+    alias Data = float[];
+    enum direction = PortDir.output;
+
+    Loc loc;
+    Data data(in size_t sampleCount) @nogc nothrow
+    {
+        return loc[0 .. sampleCount];
+    }
+}
 
 mixin template lv2_descriptor(Specs...)
 {
@@ -216,7 +300,7 @@ void cleanup(Plug)(LV2_Handle instance)
         GC.clrAttr(instance, GC.BlkAttr.NO_MOVE);
 
         {
-            auto plug = cast(Plugin)instance;
+            auto plug = cast(Plug)instance;
             plug.cleanup();
         }
 
@@ -250,7 +334,7 @@ void deactivate(Plug)(LV2_Handle instance)
 
 
 
-extern(C) @nogc nothrow
+extern(C) nothrow @nogc
 void connectPort(Plug)(LV2_Handle instance,
                         uint port,
                         void *dataLocation)
@@ -261,11 +345,15 @@ void connectPort(Plug)(LV2_Handle instance,
 }
 
 
-extern (C) @nogc nothrow
+extern (C) nothrow @nogc
 void run(Plug)(LV2_Handle instance, uint sampleCount)
 {
     static assert(isPlugin!Plug);
     auto plug = cast(Plug)instance;
+    //static if (is(typeof(Plug.Ports))) {
+        Plugin!(Plug.Ports) p = plug;
+        p._sampleCount = sampleCount;
+    //}
     plug.run(sampleCount);
 }
 
