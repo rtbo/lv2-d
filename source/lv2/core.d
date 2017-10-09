@@ -152,20 +152,90 @@ abstract class Plugin(P) : PluginBase
     private size_t _sampleCount;
 }
 
+// some plugin traits
 
 //! Statically checks that Plug is a LV2 plugin type
 enum bool isPlugin(Plug) =
-    is(Plug : PluginBase) &&
-    is(typeof((string uri, double sampleRate, string bundlePath) {
-        Plug p = Plug.instantiate(uri, sampleRate, bundlePath);
+    is(Plug : PluginBase) && (
+        is(typeof((string uri, double sampleRate, string bundlePath) {
+            Plug p = Plug.instantiate(uri, sampleRate, bundlePath);
+        }))
+        ||
+        is(typeof((string uri, double sampleRate,
+                string bundlePath, FeatureRange features) {
+            Plug p = Plug.instantiate(uri, sampleRate, bundlePath, features);
+        }))
+    );
+
+//! Checks if plugin must be instantiated with features
+enum bool needFeatures(Plug) =
+    isPlugin!Plug &&
+    is(typeof((string uri, double sampleRate,
+            string bundlePath, FeatureRange features) {
+        Plug p = Plug.instantiate(uri, sampleRate, bundlePath, features);
     }));
 
 
+//! True if the plugin gives extension data
 enum bool hasExtensionData(Plug) =
     isPlugin!Plug &&
     is(typeof((string uri) {
         void *ed = Plug.extensiondata(uri);
     }));
+
+
+// Features implementation
+
+alias Feature = LV2_Feature;
+
+enum bool isFeature(F) =
+    is(typeof((void* data) {
+        string uri = F.uri;
+        F f = F.from_data(data);
+    }));
+
+
+struct FeatureWrap
+{
+    private const(Feature)* feature;
+
+    string uri() const {
+        import std.string : fromStringz;
+        return fromStringz(feature.URI).idup;
+    }
+
+    void *data() {
+        return cast(void*)feature.data;
+    }
+
+    F opCast(F)() const
+    if (isFeature!F)
+    {
+        assert(uri() == F.uri);
+        return F.from_data(cast(void*)feature.data);
+    }
+}
+
+struct FeatureRange
+{
+    private const(const(Feature)*)* features;
+
+    @property FeatureWrap front() {
+        return FeatureWrap(*features);
+    }
+
+    @property bool empty() {
+        return features is null;
+    }
+
+    void popFront() {
+        ++features;
+    }
+
+    @property FeatureRange save() {
+        return FeatureRange(features);
+    }
+}
 
 
 enum PortDir {
@@ -287,22 +357,38 @@ extern (C) nothrow
 LV2_Handle instantiate(Plug) (const LV2_Descriptor *descriptor,
                               double sampleRate,
                               const (char)* bundlePath,
-                              const (const(LV2_Feature)*)* features)
+                              const(const(LV2_Feature)*)* features)
+if (is(Plug : PluginBase))
 {
     import core.memory : GC;
     import core.runtime : Runtime;
     import core.thread : thread_attachThis;
     import std.string : fromStringz;
 
-    static assert(isPlugin!Plug);
+    static assert(is(typeof(Plug.instantiate)),
+                  Plug.stringof ~ " must provide a instantiate static method");
+
 
     try {
         Runtime.initialize();
         thread_attachThis();
 
-        auto instance = cast(LV2_Handle) Plug.instantiate(fromStringz(descriptor.uri).idup,
-                                                            sampleRate,
-                                                            fromStringz(bundlePath).idup);
+        static if (needFeatures!Plug)
+        {
+            auto instance = cast(LV2_Handle)
+                    Plug.instantiate(fromStringz(descriptor.uri).idup,
+                                     sampleRate,
+                                     fromStringz(bundlePath).idup,
+                                     FeatureRange(features));
+        }
+        else
+        {
+            auto instance = cast(LV2_Handle)
+                    Plug.instantiate(fromStringz(descriptor.uri).idup,
+                                     sampleRate,
+                                     fromStringz(bundlePath).idup);
+        }
+
         GC.addRoot(instance);
         GC.setAttr(instance, GC.BlkAttr.NO_MOVE);
 
