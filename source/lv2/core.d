@@ -225,7 +225,7 @@ struct FeatureRange
     }
 
     @property bool empty() {
-        return features is null;
+        return *features is null;
     }
 
     void popFront() {
