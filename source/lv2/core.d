@@ -301,11 +301,13 @@ struct OutputAudio
 
 mixin template lv2_descriptor(Specs...)
 {
-    import lv2.bind.core;
+    import lv2.bind.core : LV2_Descriptor;
 
     extern(C) pragma(mangle, "lv2_descriptor")
     const(LV2_Descriptor)* lv2_descriptor(uint index) nothrow @nogc
     {
+        import lv2.core : instantiate, activate, cleanup, deactivate,
+                          connectPort, run, extensionData;
         import std.meta : AliasSeq;
 
         template DescSpec(string s, T) {
