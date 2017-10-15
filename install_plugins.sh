@@ -11,4 +11,4 @@ function install_plugin {
 }
 
 install_plugin amp
-# install_plugin sine_synth
+install_plugin synth

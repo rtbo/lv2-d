@@ -1,0 +1,14 @@
+{
+	"name": "synth",
+	"targetType": "dynamicLibrary",
+	"targetName": "synth",
+	"authors": [ "Remi Thebault" ],
+	"description": "Synth LV2 example",
+	"copyright": "Copyright © 2017, Remi Thebault",
+	"license": "MIT",
+	"dependencies": {
+		"lv2": {
+			"path": "../.."
+		}
+	}
+}

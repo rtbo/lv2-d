@@ -1,13 +1,12 @@
 {
 	"name": "lv2",
-	"authors": [
-		"Rémi Thebault"
-	],
+	"authors": [ "Rémi Thebault" ],
 	"description": "LV2 plugins in D",
 	"copyright": "Copyright © 2017, Rémi Thebault",
 	"license": "MIT",
 	"targetType": "library",
 	"subPackages": [
-		"plugins/amp"
+		"plugins/amp",
+		"plugins/synth"
 	]
 }
