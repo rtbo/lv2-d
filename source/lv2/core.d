@@ -237,6 +237,39 @@ struct FeatureRange
     }
 }
 
+template featuresQuery(Query...) if (Query.length >= 1)
+{
+    import std.range : isInputRange, Unqual, ElementType;
+
+    auto featuresQuery(FR)(FR features)
+    if (isInputRange!FR && is(Unqual!(ElementType!FR) == FeatureWrap))
+    {
+        import std.meta : staticMap;
+        import std.typecons : Tuple, Nullable;
+
+        static if (Query.length == 1) {
+            alias F = Query[0];
+            Nullable!F res;
+            foreach (f; features) {
+                if (F.uri == f.uri()) {
+                    res = cast(F)f;
+                }
+            }
+        }
+        else {
+            Tuple!(staticMap!(Nullable, Query)) res;
+            foreach (f; features) {
+                foreach (size_t i, F; Query) {
+                    if (F.uri == f.uri()) {
+                        res[i] = cast(F)f;
+                    }
+                }
+            }
+        }
+
+        return res;
+    }
+}
 
 enum PortDir {
     input, output
